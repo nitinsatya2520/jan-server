@@ -3,6 +3,7 @@
   "functions": {
     "api/**/*.js": {
       "runtime": "@vercel/node@18.x"  
+    }
   },
   "routes": [
     {
@@ -10,5 +11,4 @@
       "dest": "/api/$1"
     }
   ]
-}
 }
