@@ -24,6 +24,9 @@ app.use(cors({
 // Middleware to parse JSON request bodies
 app.use(express.json());
 
+app.options('/ask', cors()); // Enable preflight request handling
+
+
 // Route to handle the '/ask' endpoint
 app.post('/ask', (req, res) => {
     const { command } = req.body; // Destructure 'command' from the request body
