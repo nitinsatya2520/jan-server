@@ -1,54 +1,130 @@
-const express = require('express');
-const cors = require('cors');
-const { spawn } = require('child_process');
+const axios = require('axios');
+const { SpeechClient } = require('@google-cloud/speech');
+const { TextToSpeechClient } = require('@google-cloud/text-to-speech');
+const fs = require('fs');
+const util = require('util');
+const { Builder, By, Key, until } = require('selenium-webdriver');
+const open = require('open');
 
-const app = express();
-const port = 5000;
+// Initialize Google Cloud clients
+const speechClient = new SpeechClient();
+const ttsClient = new TextToSpeechClient();
 
-// Define allowed origins
-const allowedOrigins = ['http://localhost:3000', 'https://jan-eight.vercel.app'];
+// Function to convert text to speech
+async function speak(text) {
+    const request = {
+        input: { text },
+        voice: { languageCode: 'en-US', ssmlGender: 'NEUTRAL' },
+        audioConfig: { audioEncoding: 'MP3' },
+    };
 
-// Use CORS middleware with options
-app.use(cors({
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    methods: ['GET', 'POST'],
-    credentials: true, // Allows credentials like cookies to be sent
-}));
+    const [response] = await ttsClient.synthesizeSpeech(request);
+    const writeFile = util.promisify(fs.writeFile);
+    await writeFile('output.mp3', response.audioContent, 'binary');
+    console.log('Audio content written to file: output.mp3');
+}
 
-app.use(express.json()); // For parsing application/json
+// Function to recognize speech
+async function recognizeSpeech() {
+    const audio = fs.readFileSync('path_to_audio_file.wav'); // Replace with actual audio file path
+    const audioBytes = audio.toString('base64');
 
-// Route to handle POST requests to /ask
-app.post('/ask', (req, res) => {
-    const { command } = req.body;
+    const request = {
+        audio: {
+            content: audioBytes,
+        },
+        config: {
+            encoding: 'LINEAR16',
+            sampleRateHertz: 16000,
+            languageCode: 'en-US',
+        },
+    };
 
-    if (!command) {
-        return res.status(400).send('Command is required');
+    const [response] = await speechClient.recognize(request);
+    const transcription = response.results
+        .map(result => result.alternatives[0].transcript)
+        .join('\n');
+    console.log(`Transcription: ${transcription}`);
+    return transcription;
+}
+
+// Function to get weather information
+async function getWeather(command) {
+    const city = command.match(/in (\w+)/)[1]; // Example extraction
+    const apiKey = '03f7fb2a6ffa9af4e20414dc73edb7a3'; // Replace with your API key
+    const url = `http://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`;
+
+    try {
+        const response = await axios.get(url);
+        const { temp } = response.data.main;
+        const description = response.data.weather[0].description;
+        await speak(`The temperature in ${city} is ${temp}°C with ${description}.`);
+    } catch (error) {
+        await speak('Sorry, I couldn\'t fetch the weather details.');
     }
+}
 
-    const pythonProcess = spawn('python', ['python-scripts/assistant.py', command]);
+// Function to perform basic math calculations
+function performMath(command) {
+    try {
+        const result = eval(command);
+        speak(`The result is ${result}`);
+    } catch (error) {
+        speak('Sorry, I couldn\'t calculate that.');
+    }
+}
 
-    let result = '';
+// Function for unit conversion
+function convertUnits(command) {
+    // Example conversion logic
+    // Note: Implement unit conversion based on the actual requirement
+    speak(`Conversion result for: ${command}`);
+}
 
-    pythonProcess.stdout.on('data', (data) => {
-        result += data.toString();
-    });
+// Function to play song on YouTube
+async function playYouTubeSong(songName) {
+    let driver = await new Builder().forBrowser('chrome').build();
+    try {
+        await driver.get('https://www.youtube.com');
+        await driver.findElement(By.name('search_query')).sendKeys(songName, Key.RETURN);
+        await driver.wait(until.elementLocated(By.id('video-title')), 10000);
+        await driver.findElement(By.id('video-title')).click();
+    } catch (error) {
+        await speak('An error occurred while playing the song.');
+    } finally {
+        await driver.quit();
+    }
+}
 
-    pythonProcess.stderr.on('data', (data) => {
-        console.error(`Python error: ${data}`);
-        res.status(500).send('Error occurred while executing the Python script.');
-    });
+// Function to open WhatsApp
+async function openWhatsApp() {
+    await open('https://api.whatsapp.com');
+}
 
-    pythonProcess.on('close', (code) => {
-        res.send(result.trim());
-    });
-});
+// Function to handle commands
+async function handleCommand(command) {
+    command = command.toLowerCase();
 
-app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
-});
+    if (command.includes('weather')) {
+        await getWeather(command);
+    } else if (command.includes('calculate')) {
+        performMath(command.replace('calculate', '').trim());
+    } else if (command.includes('convert')) {
+        convertUnits(command);
+    } else if (command.includes('play')) {
+        await playYouTubeSong(command.replace('play', '').trim());
+    } else if (command.includes('open whatsapp')) {
+        await openWhatsApp();
+    } else {
+        await speak('Command not recognized.');
+    }
+}
+
+// Main function
+async function main() {
+    // Example command
+    const command = await recognizeSpeech();
+    await handleCommand(command);
+}
+
+main();
