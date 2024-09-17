@@ -1,68 +1,58 @@
 const express = require('express');
-const cors = require('cors');
+const cors = require('cors'); // Import cors
 const { spawn } = require('child_process');
-
 const app = express();
+const port = 5000;
 
-// Define allowed origins for CORS
+// Define allowed origins
 const allowedOrigins = ['http://localhost:3000', 'https://jan-eight.vercel.app'];
 
-// Middleware for CORS configuration
+// Enable CORS for the allowed origins
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true); // Allow if origin is in the list or if it's a non-browser request
+            callback(null, true);
         } else {
-            callback(new Error('Not allowed by CORS')); // Block requests from disallowed origins
+            callback(new Error('Not allowed by CORS'));
         }
     },
-    methods: ['GET', 'POST', 'DELETE'], // Allowed HTTP methods
-    credentials: true, // Allow credentials (cookies, authorization headers, etc.)
-    allowedHeaders: ['Content-Type', 'Authorization'] // Ensure headers are allowed
+    methods: ['GET', 'POST'],
+    credentials: true, // Allow credentials if needed
 }));
 
-// Middleware to parse JSON request bodies
-app.use(express.json());
+app.use(express.json()); // Middleware to parse JSON request bodies
 
-// Handle OPTIONS requests for CORS preflight
-app.options('/ask', cors());
-
-// Route to handle the '/ask' endpoint
+// Route to handle POST requests to /ask
 app.post('/ask', (req, res) => {
-    const { command } = req.body; // Destructure 'command' from the request body
+    const command = req.body.command;
 
-    // Validate the presence of 'command' in the request
     if (!command) {
-        return res.status(400).json({ error: 'Command is required' });
+        return res.status(400).send('Command is required');
     }
 
-    // Spawn a child process to execute the Python script
+    // Call a Python script (example: assistant.py) with the command as an argument
     const pythonProcess = spawn('python', ['python-scripts/assistant.py', command]);
 
-    let result = ''; // Variable to store the Python script output
+    let result = '';
 
-    // Capture the stdout data from the Python process
+    // Capture Python script output
     pythonProcess.stdout.on('data', (data) => {
-        result += data.toString(); // Append the data to the result string
+        result += data.toString();
     });
 
-    // Handle any errors from the Python process
-    pythonProcess.stderr.on('data', (error) => {
-        console.error(`Python error: ${error.toString()}`);
-        return res.status(500).json({ error: 'Error occurred while executing the Python script' });
+    // Handle errors from Python script
+    pythonProcess.stderr.on('data', (data) => {
+        console.error(`Python error: ${data}`);
+        res.status(500).send('Error occurred while executing the Python script.');
     });
 
-    // Once the Python process is finished, send the result back to the client
+    // Send the final result after the Python process closes
     pythonProcess.on('close', (code) => {
-        if (code !== 0) {
-            return res.status(500).json({ error: `Python script exited with code ${code}` });
-        }
-        res.status(200).send(result.trim()); // Send the trimmed result to the client
+        res.send(result.trim());
     });
 });
 
-// Start the server on the specified port
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+// Start the server
+app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
 });
