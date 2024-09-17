@@ -1,43 +1,54 @@
 const express = require('express');
-const { exec } = require('child_process');
-const path = require('path');
+const cors = require('cors');
+const { spawn } = require('child_process');
 
 const app = express();
-const port = 3000;
+const port = 5000;
 
-// Middleware to parse JSON bodies
-app.use(express.json());
+// Define allowed origins
+const allowedOrigins = ['http://localhost:3000', 'https://jan-eight.vercel.app'];
 
-// Endpoint to trigger Python script
+// Use CORS middleware with options
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    methods: ['GET', 'POST'],
+    credentials: true, // Allows credentials like cookies to be sent
+}));
+
+app.use(express.json()); // For parsing application/json
+
+// Route to handle POST requests to /ask
 app.post('/ask', (req, res) => {
-    const { question } = req.body;  // Extract the question from the request body
+    const { command } = req.body;
 
-    // Ensure question is provided
-    if (!question) {
-        return res.status(400).json({ error: 'No question provided' });
+    if (!command) {
+        return res.status(400).send('Command is required');
     }
 
-    // Path to your Python script
-    const pythonScriptPath = path.join(__dirname, 'assistant.py');
+    const pythonProcess = spawn('python', ['python-scripts/assistant.py', command]);
 
-    // Command to execute Python script with the question
-    const command = `python ${pythonScriptPath} "${question}"`;
+    let result = '';
 
-    exec(command, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`Error: ${error.message}`);
-            return res.status(500).json({ error: 'An error occurred while executing the script' });
-        }
-        if (stderr) {
-            console.error(`Stderr: ${stderr}`);
-            return res.status(500).json({ error: 'An error occurred while executing the script' });
-        }
+    pythonProcess.stdout.on('data', (data) => {
+        result += data.toString();
+    });
 
-        // Send the output of the Python script as the response
-        res.json({ response: stdout.trim() });
+    pythonProcess.stderr.on('data', (data) => {
+        console.error(`Python error: ${data}`);
+        res.status(500).send('Error occurred while executing the Python script.');
+    });
+
+    pythonProcess.on('close', (code) => {
+        res.send(result.trim());
     });
 });
 
 app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
+    console.log(`Server running at http://localhost:${port}`);
 });
