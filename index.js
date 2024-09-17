@@ -49,6 +49,14 @@ app.post('/ask', (req, res) => {
     });
 });
 
+app.options('/ask', (req, res) => {
+    res.set('Access-Control-Allow-Origin', 'https://jan-eight.vercel.app');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    res.sendStatus(200); // Respond OK to preflight
+  });
+  
+
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
