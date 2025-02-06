@@ -6,7 +6,7 @@ const app = express();
 const port = 5000;
 
 // Define allowed origins
-const allowedOrigins = ['http://localhost:3000', 'https://jan-eight.vercel.app'];
+const allowedOrigins = ['https://jan-eight.vercel.app'];
 
 // Use CORS middleware with options
 app.use(cors({
